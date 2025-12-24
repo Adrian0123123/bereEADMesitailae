@@ -60,11 +60,68 @@ def main():
   # Normaliza
   norm = []
   countries = set()
+  skipped = 0
+
+  def pick_str(*vals) -> str:
+    for v in vals:
+      if isinstance(v, str) and v.strip():
+        return v.strip()
+    return ""
+
+  def extract_url(ch: dict) -> str:
+    # url directo
+    u = ch.get("url") or ch.get("streamUrl") or ch.get("m3u8")
+    if isinstance(u, str) and u.strip():
+      return u.strip()
+
+    # url dentro de streams / sources
+    streams = ch.get("streams") or ch.get("stream") or ch.get("sources")
+    if isinstance(streams, list) and streams:
+      s0 = streams[0]
+      if isinstance(s0, dict):
+        u2 = s0.get("url") or s0.get("streamUrl") or s0.get("m3u8")
+        if isinstance(u2, str) and u2.strip():
+          return u2.strip()
+      if isinstance(s0, str) and s0.strip():
+        return s0.strip()
+
+    return ""
+
   for ch in channels:
-    name = (ch.get("name") or "").strip()
-    url = (ch.get("url") or "").strip()
-    if not name or not url: 
+    if not isinstance(ch, dict):
+      skipped += 1
       continue
+
+    name = pick_str(ch.get("name"), ch.get("title"), ch.get("label"), ch.get("channel"))
+    url = extract_url(ch)
+
+    if not name or not url:
+      skipped += 1
+      continue
+
+    country = pick_str(ch.get("country"), ch.get("cc"), ch.get("countryCode")).upper() or "XX"
+    raw_cat = pick_str(ch.get("category"), ch.get("group"), ch.get("type")) or "other"
+    cat = canon_category(raw_cat)
+
+    cid = ch.get("id") or f"{country.lower()}_{slugify(name)}"
+    cid = prefix + slugify(str(cid)).replace(prefix, "", 1)
+
+    countries.add(country)
+
+    norm.append({
+      "id": cid,
+      "name": name,
+      "country": country,
+      "cat": cat,
+      "logo": pick_str(ch.get("logo"), ch.get("poster"), ch.get("icon")),
+      "desc": pick_str(ch.get("description"), ch.get("desc")),
+      "url": url
+    })
+
+  print(f"channels.json entries: {len(channels)} | parsed: {len(norm)} | skipped: {skipped}")
+  if len(norm) == 0:
+    raise SystemExit("No se parseó ningún canal. Revisa las claves (name/title y url/streams[0].url).")
+
     country = (ch.get("country") or "xx").strip().lower()
     country = country[:2] if len(country) >= 2 else "xx"
     countries.add(country.upper())
